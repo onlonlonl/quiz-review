@@ -55,6 +55,18 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
 .card-footer{padding:6px 20px 12px 58px;font-size:13px;color:#999}
 .empty{text-align:center;padding:60px;color:#999;font-size:15px}
 .loading{text-align:center;padding:80px;color:#999;font-size:15px}
+.modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:200;display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border-radius:12px;width:700px;max-width:90vw;max-height:85vh;overflow-y:auto;padding:24px}
+.modal h3{font-size:17px;font-weight:600;margin-bottom:16px}
+.modal label{display:block;font-size:13px;color:#666;margin:12px 0 4px;font-weight:500}
+.modal input[type="text"],.modal textarea,.modal select{width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:14px;font-family:inherit}
+.modal textarea{min-height:60px;resize:vertical}
+.opt-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.opt-row input{flex:1}
+.opt-row .opt-check{width:20px;height:20px;cursor:pointer}
+.modal-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+.edit-icon{font-size:12px;color:#2b4280;cursor:pointer;margin-left:8px;opacity:0;transition:opacity .15s}
+.card-header:hover .edit-icon{opacity:1}
 </style>
 </head>
 <body>
@@ -101,7 +113,17 @@ var L = {
   noMatch: '\u6CA1\u6709\u5339\u914D\u7684\u9898\u76EE',
   confirmRm: '\u786E\u8BA4\u79FB\u9664\u5F53\u524D\u7B5B\u9009\u4E2D\u7684 ',
   confirmRm2: ' \u9053\u9898\uFF1F',
-  check: '\u2713'
+  check: '\u2713',
+  edit: '\u7F16\u8F91',
+  editTitle: '\u7F16\u8F91\u9898\u76EE',
+  question: '\u9898\u76EE',
+  optLabel: '\u9009\u9879',
+  correct: '\u6B63\u786E\u7B54\u6848',
+  group: '\u5206\u7EC4',
+  qtype: '\u9898\u578B',
+  save: '\u4FDD\u5B58',
+  cancel: '\u53D6\u6D88',
+  saved: '\u5DF2\u4FDD\u5B58'
 };
 
 // Set static text
@@ -171,7 +193,7 @@ function getAns(q){return q.type==='multiple'?(q.answers||[]):(q.answer?[q.answe
 function renderCard(q){
   var on=!q.is_deleted,ans=getAns(q);
   var ft=q.note||q.subtitle||'';
-  return '<div class="card '+(on?'':'excluded')+'">'+'<div class="card-header" onclick="toggle(\''+q.id+'\')">'+'<div class="toggle '+(on?'on':'off')+'"></div>'+'<div class="card-title">'+q.title+'</div>'+'<div class="card-meta">'+'<span class="tag '+(q.source==='contribution'?'tag-contrib':'tag-original')+'">'+(q.source==='contribution'?L.contrib:L.orig)+'</span>'+'<span class="tag '+(q.type==='multiple'?'tag-multi':'tag-single')+'">'+(q.type==='multiple'?L.multi:L.single)+'</span>'+'<span class="tag tag-group">'+q.group_name+'</span>'+'</div></div>'+'<div class="card-body"><ul class="options">'+q.options.map(function(o){var c=ans.indexOf(o.value)>=0;return '<li class="'+(c?'correct':'')+'">'+'<span class="val">'+o.value+'.</span> '+o.label+(c?' '+L.check:'')+'</li>'}).join('')+'</ul></div>'+(ft?'<div class="card-footer">'+ft+'</div>':'')+'</div>'
+  return '<div class="card '+(on?'':'excluded')+'">'+'<div class="card-header">'+'<div class="toggle '+(on?'on':'off')+'" onclick="toggle(\''+q.id+'\')"></div>'+'<div class="card-title" onclick="toggle(\''+q.id+'\')">'+q.title+'</div>'+'<span class="edit-icon" onclick="event.stopPropagation();openEdit(\''+q.id+'\')">\u270E</span>'+'<div class="card-meta">'+'<span class="tag '+(q.source==='contribution'?'tag-contrib':'tag-original')+'">'+(q.source==='contribution'?L.contrib:L.orig)+'</span>'+'<span class="tag '+(q.type==='multiple'?'tag-multi':'tag-single')+'">'+(q.type==='multiple'?L.multi:L.single)+'</span>'+'<span class="tag tag-group">'+q.group_name+'</span>'+'</div></div>'+'<div class="card-body"><ul class="options">'+q.options.map(function(o){var c=ans.indexOf(o.value)>=0;return '<li class="'+(c?'correct':'')+'">'+'<span class="val">'+o.value+'.</span> '+o.label+(c?' '+L.check:'')+'</li>'}).join('')+'</ul></div>'+(ft?'<div class="card-footer">'+ft+'</div>':'')+'</div>'
 }
 
 function getFiltered(){
@@ -250,6 +272,67 @@ setInterval(function(){
   });if(ch){render();setSS('ok',L.syncRemote)}})
   .catch(function(){})
 },30000);
+
+function openEdit(id){
+  var q=DATA.find(function(x){return x.id===id});
+  if(!q)return;
+  var ans=getAns(q);
+  var groups=[...new Set(DATA.map(function(x){return x.group_name}))].sort();
+  var html='<div class="modal-bg" id="editModal" onclick="if(event.target===this)closeEdit()">'
+    +'<div class="modal">'
+    +'<h3>'+L.editTitle+' <span style="color:#999;font-size:13px">'+q.id+'</span></h3>'
+    +'<label>'+L.question+'</label>'
+    +'<textarea id="ed_title">'+q.title.replace(/</g,'&lt;')+'</textarea>'
+    +'<label>'+L.optLabel+' <span style="color:#999;font-size:11px">(\u2611 = '+L.correct+')</span></label>'
+    +'<div id="ed_opts">'
+    +q.options.map(function(o){
+      var ck=ans.indexOf(o.value)>=0;
+      return '<div class="opt-row"><span style="min-width:20px;font-weight:500">'+o.value+'.</span>'
+        +'<input type="text" class="ed_opt_label" data-val="'+o.value+'" value="'+o.label.replace(/"/g,'&quot;')+'">'
+        +'<input type="checkbox" class="opt-check"'+(ck?' checked':'')+' data-val="'+o.value+'"></div>'
+    }).join('')
+    +'</div>'
+    +'<div style="display:flex;gap:16px">'
+    +'<div style="flex:1"><label>'+L.qtype+'</label><select id="ed_type"><option value="single"'+(q.type==='single'?' selected':'')+'>'+L.single+'</option><option value="multiple"'+(q.type==='multiple'?' selected':'')+'>'+L.multi+'</option></select></div>'
+    +'<div style="flex:1"><label>'+L.group+'</label><select id="ed_group">'+groups.map(function(g){return '<option value="'+g+'"'+(g===q.group_name?' selected':'')+'>'+g+'</option>'}).join('')+'</select></div>'
+    +'</div>'
+    +'<div class="modal-btns">'
+    +'<button class="btn btn-outline" onclick="closeEdit()">'+L.cancel+'</button>'
+    +'<button class="btn btn-primary" onclick="saveEdit(\''+q.id+'\')">'+L.save+'</button>'
+    +'</div></div></div>';
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function closeEdit(){var m=document.getElementById('editModal');if(m)m.remove()}
+
+async function saveEdit(id){
+  var q=DATA.find(function(x){return x.id===id});
+  if(!q)return;
+  q.title=document.getElementById('ed_title').value.trim();
+  q.type=document.getElementById('ed_type').value;
+  q.group_name=document.getElementById('ed_group').value;
+  var labels=document.querySelectorAll('.ed_opt_label');
+  labels.forEach(function(inp){
+    var o=q.options.find(function(x){return x.value===inp.dataset.val});
+    if(o)o.label=inp.value.trim();
+  });
+  var checks=document.querySelectorAll('.opt-check');
+  var newAns=[];
+  checks.forEach(function(cb){if(cb.checked)newAns.push(cb.dataset.val)});
+  if(q.type==='multiple'){q.answers=newAns;q.answer=null}
+  else{q.answer=newAns[0]||null;q.answers=null}
+  closeEdit();render();
+  setSS('',L.syncing);
+  try{
+    var body={title:q.title,options:q.options,type:q.type,group_name:q.group_name,updated_at:new Date().toISOString()};
+    if(q.type==='multiple'){body.answers=q.answers;body.answer=null}
+    else{body.answer=q.answer;body.answers=null}
+    await fetch(SB+'/rest/v1/exam_questions?id=eq.'+encodeURIComponent(id),{
+      method:'PATCH',headers:H({'Content-Type':'application/json',Prefer:'return=minimal'}),
+      body:JSON.stringify(body)
+    });setSS('ok',L.saved)
+  }catch(e){setSS('err',L.syncFail)}
+}
 
 loadData();
 </script>
